@@ -9,9 +9,8 @@ if (!isset($_SESSION['user'])) {
     exit();
 }
 
-// Back button security (Cache control)
+// Back button security
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 ?>
 <!DOCTYPE html>
@@ -34,9 +33,16 @@ header("Pragma: no-cache");
     </div>
 
     <div class="container">
+        <a href="add_student.php" class="card"><h3>Add Student</h3></a>
+
         <a href="subject_allocation.php" class="card"><h3>Subject Allocation</h3></a>
+
         <a href="attendance.php" class="card"><h3>Daily Attendance</h3></a>
-        <a href="manage_marks.php" class="card"><h3>Academic Marks</h3></a>
+
+        <a href="manage_marks.php" class="card"><h3>Manage Marks</h3></a>
+
+        <a href="view_results.php" class="card"><h3>Academic Marks</h3></a>
+
         <a href="behaviour_assessment.php" class="card"><h3>Behaviour Records</h3></a>
     </div>
 
