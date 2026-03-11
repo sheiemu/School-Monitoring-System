@@ -1,18 +1,25 @@
 <?php
-// Auto-detect server name
-$serverName = ".\\SQLEXPRESS"; 
+// 1. Auto-detecting the server - ekhane fixed kono naam thakbe na
+$serverName = ".\SQLEXPRESS"; 
 
-// SSMS-e database-er je naam dekhben sheta ekhane boshaben
+// 2. Database Name: Dui joni SSMS-e database-er naam 'StudentMonitoringDB' rakhun
 $connectionInfo = array(
-    "Database" => "StudentMonitoringDB", // Jemon: 'StudentMonitoringDB' (v2 bad diye)
+    "Database" => "StudentMonitoringDB", 
     "CharacterSet" => "UTF-8",
     "TrustServerCertificate" => true
 );
 
+// 3. Connection attempt
 $conn = sqlsrv_connect($serverName, $connectionInfo);
 
-if(!$conn) { 
-    echo "Connection failed! Check if database name matches SSMS.<br>";
-    die(print_r(sqlsrv_errors(), true)); 
+// 4. Jodi karon PC-te '.' kaj na kore, tobe localhost try korbe
+if ($conn === false) {
+    $serverName = "localhost\SQLEXPRESS";
+    $conn = sqlsrv_connect($serverName, $connectionInfo);
+}
+
+// 5. Final Error Handling
+if ($conn === false) {
+    die(print_r(sqlsrv_errors(), true));
 }
 ?>
