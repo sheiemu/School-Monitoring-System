@@ -2,34 +2,34 @@
 session_start();
 require_once 'db_config.php';
 
-// Security check: Login chara keu dhukte parbe na
 if (!isset($_SESSION['user'])) {
     header("Location: login.php");
     exit();
 }
 
-$msg = "";
-// Form submit hole data SQL Server-e jabe
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+$message = "";
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['save_marks'])) {
     $sid = $_POST['student_id'];
-    $subid = $_POST['subject_id'];
-    $marks = $_POST['marks'];
-    $term = $_POST['exam_term'];
+    $cid = $_POST['class_id'];
+    $subject = $_POST['subject_name'];
+    $marks = $_POST['marks_obtained'];
+    $exam = $_POST['exam_type'];
 
-    // Marks table-e data insert kora (PDF Requirement 3.3)
-    $sql = "INSERT INTO Marks (student_id, subject_id, marks_obtained, exam_type) VALUES (?, ?, ?, ?)";
-    $params = array($sid, $subid, $marks, $term);
+    // Data insert query
+    $sql = "INSERT INTO Marks (student_id, class_id, subject_name, marks_obtained, exam_type) VALUES (?, ?, ?, ?, ?)";
+    $params = array($sid, $cid, $subject, $marks, $exam);
     $stmt = sqlsrv_query($conn, $sql, $params);
 
-    if ($stmt) { 
-        $msg = "<p style='color:green; font-weight:bold;'>Success: Marks recorded for Student ID $sid!</p>"; 
-    } else { 
-        $msg = "<p style='color:red; font-weight:bold;'>Error! Please check if Student ID exists.</p>";
+    if ($stmt) {
+        $message = "<div style='color: #27ae60; margin-bottom: 15px;'>✔ Marks saved successfully!</div>";
+    } else {
+        $message = "<div style='color: #e74c3c; margin-bottom: 15px;'>✖ Error saving marks. Check Student ID.</div>";
     }
 }
 
-// Subject dropdown-er jonno data fetch kora
-$subjects = sqlsrv_query($conn, "SELECT * FROM Subject");
+// Subject list fetch kora
+$subjects_query = "SELECT subject_name FROM Subject";
+$subjects_stmt = sqlsrv_query($conn, $subjects_query);
 ?>
 
 <!DOCTYPE html>
@@ -37,38 +37,44 @@ $subjects = sqlsrv_query($conn, "SELECT * FROM Subject");
 <head>
     <title>Academic Marks Entry</title>
     <style>
-        body { font-family: 'Segoe UI', Arial; background: #f4f7f6; text-align: center; margin: 0; }
-        .box { background: white; width: 400px; margin: 50px auto; padding: 30px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); border-top: 5px solid #3498db; }
-        select, input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
-        button { background: #3498db; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #2980b9; }
-        .back { display: block; margin-top: 20px; color: #7f8c8d; text-decoration: none; font-size: 14px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 30px; border-radius: 12px; shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; text-align: center; border-top: 5px solid #3498db; }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        .btn-save { background: #3498db; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        .btn-save:hover { background: #2980b9; }
     </style>
 </head>
 <body>
-    <div class="box">
+    <div class="card">
         <h2 style="color: #2c3e50;">Academic Marks Entry</h2>
-        <?php echo $msg; ?>
+        <?php echo $message; ?>
         <form method="POST">
             <input type="number" name="student_id" placeholder="Enter Student ID (e.g. 1)" required>
             
-            <select name="subject_id" required>
+            <select name="class_id" required>
+                <option value="">-- Select Class --</option>
+                <?php for($i=6; $i<=10; $i++): ?>
+                    <option value="<?php echo $i; ?>">Class <?php echo $i; ?></option>
+                <?php endfor; ?>
+            </select>
+
+            <select name="subject_name" required>
                 <option value="">-- Select Subject --</option>
-                <?php while($row = sqlsrv_fetch_array($subjects, SQLSRV_FETCH_ASSOC)): ?>
-                    <option value="<?php echo $row['subject_id']; ?>"><?php echo $row['subject_name']; ?></option>
+                <?php while($row = sqlsrv_fetch_array($subjects_stmt, SQLSRV_FETCH_ASSOC)): ?>
+                    <option value="<?php echo $row['subject_name']; ?>"><?php echo $row['subject_name']; ?></option>
                 <?php endwhile; ?>
             </select>
 
-            <input type="number" name="marks" placeholder="Marks Obtained (0-100)" min="0" max="100" step="0.01" required>
-            
-            <select name="exam_term" required>
+            <input type="number" step="0.01" name="marks_obtained" placeholder="Marks Obtained (0-100)" required>
+
+            <select name="exam_type" required>
                 <option value="Midterm">Midterm</option>
                 <option value="Final">Final</option>
             </select>
 
-            <button type="submit">SAVE TO DATABASE</button>
+            <button type="submit" name="save_marks" class="btn-save">SAVE TO DATABASE</button>
         </form>
-        <a href="dashboard.php" class="back">← Back to Dashboard</a>
+        <p><a href="dashboard.php" style="color: #7f8c8d; text-decoration: none; font-size: 14px;">← Back to Dashboard</a></p>
     </div>
 </body>
 </html>
