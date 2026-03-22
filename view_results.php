@@ -25,6 +25,7 @@ if (isset($_GET['search'])) {
     $student_info = sqlsrv_fetch_array($stmt_student, SQLSRV_FETCH_ASSOC);
 
     if ($student_info) {
+        //
         // 2. Marks fetch kora - SERIAL: Student ID, Exam Type, Class ID
         // RTRIM use kora hoyeche jate string matching-e space error na hoy
         $sql_marks = "SELECT s.subject_name, m.marks_obtained 
