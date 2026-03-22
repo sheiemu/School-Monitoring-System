@@ -26,7 +26,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['save_marks'])) {
         $message = "<div style='color: #e74c3c; margin-bottom: 15px;'>✖ Error saving marks. Check Student ID.</div>";
     }
 }
-
+//
 // Subject list fetch kora
 $subjects_query = "SELECT subject_name FROM Subject";
 $subjects_stmt = sqlsrv_query($conn, $subjects_query);
