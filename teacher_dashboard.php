@@ -62,11 +62,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'teacher') {
     <a href="parent_messages.php" class="card"><h3>📨 Parent Messages</h3><p>View and reply to messages from parents</p></a>
     <a href="analysis.php" class="card"><h3>📈 View Analysis</h3><p>Academic and behaviour analytics</p></a>
 </div>
-        <h2 class="section-title">💬 Communication</h2>
-        <div class="card-grid">
-            <a href="feedback.php" class="card"><h3>💬 Send Feedback</h3><p>Message parents about student progress</p></a>
-            <a href="analysis.php" class="card"><h3>📈 View Analysis</h3><p>Academic and behaviour analytics</p></a>
-        </div>
+        
     </div>
 </body>
 </html>

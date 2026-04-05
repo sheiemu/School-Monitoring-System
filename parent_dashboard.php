@@ -16,6 +16,7 @@ $attendance_records = [];
 $behaviour_records = [];
 $notifications = [];
 $parent_feedback = [];
+$teacher_replies = [];
 $error_msg = "";
 $search_performed = false;
 $feedback_msg = "";
@@ -30,10 +31,6 @@ if (isset($_POST['search_student'])) {
     $group = isset($_POST['group']) ? $_POST['group'] : '';
     $search_performed = true;
     
-    // Store in session for feedback
-    $_SESSION['viewing_student_id'] = $student_id;
-    $_SESSION['viewing_class_id'] = $class_id;
-    
     // First verify student exists in selected class
     $check_sql = "SELECT s.*, c.class_name 
                   FROM Student s 
@@ -46,32 +43,52 @@ if (isset($_POST['search_student'])) {
     } else {
         $student_info = sqlsrv_fetch_array($check_stmt, SQLSRV_FETCH_ASSOC);
         
-        // Fetch ALL marks
-        $marks_sql = "SELECT sub.subject_name, m.marks_obtained, m.exam_type
+        // Store in session for feedback
+        $_SESSION['viewing_student_id'] = $student_id;
+        $_SESSION['viewing_class_id'] = $class_id;
+        
+        // Fetch Quiz Marks
+        $quiz_sql = "SELECT sub.subject_name, m.marks_obtained
+                     FROM Marks m 
+                     JOIN Subject sub ON m.subject_id = sub.subject_id 
+                     WHERE m.student_id = ? AND m.exam_type = 'Quiz'
+                     ORDER BY sub.subject_name";
+        $quiz_stmt = sqlsrv_query($conn, $quiz_sql, array($student_id));
+        while($row = sqlsrv_fetch_array($quiz_stmt, SQLSRV_FETCH_ASSOC)) {
+            $quiz_marks[] = $row;
+        }
+        
+        // Fetch Assignment Marks
+        $assign_sql = "SELECT sub.subject_name, m.marks_obtained
+                       FROM Marks m 
+                       JOIN Subject sub ON m.subject_id = sub.subject_id 
+                       WHERE m.student_id = ? AND m.exam_type = 'Assignment'
+                       ORDER BY sub.subject_name";
+        $assign_stmt = sqlsrv_query($conn, $assign_sql, array($student_id));
+        while($row = sqlsrv_fetch_array($assign_stmt, SQLSRV_FETCH_ASSOC)) {
+            $assignment_marks[] = $row;
+        }
+        
+        // Fetch Midterm Marks
+        $mid_sql = "SELECT sub.subject_name, m.marks_obtained
+                    FROM Marks m 
+                    JOIN Subject sub ON m.subject_id = sub.subject_id 
+                    WHERE m.student_id = ? AND m.exam_type = 'Midterm'
+                    ORDER BY sub.subject_name";
+        $mid_stmt = sqlsrv_query($conn, $mid_sql, array($student_id));
+        while($row = sqlsrv_fetch_array($mid_stmt, SQLSRV_FETCH_ASSOC)) {
+            $midterm_marks[] = $row;
+        }
+        
+        // Fetch Final Marks
+        $final_sql = "SELECT sub.subject_name, m.marks_obtained
                       FROM Marks m 
                       JOIN Subject sub ON m.subject_id = sub.subject_id 
-                      WHERE m.student_id = ?
-                      ORDER BY 
-                          CASE m.exam_type 
-                              WHEN 'Quiz' THEN 1 
-                              WHEN 'Assignment' THEN 2 
-                              WHEN 'Midterm' THEN 3 
-                              WHEN 'Final' THEN 4 
-                          END,
-                          sub.subject_name";
-        $marks_stmt = sqlsrv_query($conn, $marks_sql, array($student_id));
-        if ($marks_stmt) {
-            while($row = sqlsrv_fetch_array($marks_stmt, SQLSRV_FETCH_ASSOC)) {
-                if ($row['exam_type'] == 'Midterm') {
-                    $midterm_marks[] = $row;
-                } elseif ($row['exam_type'] == 'Final') {
-                    $final_marks[] = $row;
-                } elseif ($row['exam_type'] == 'Quiz') {
-                    $quiz_marks[] = $row;
-                } elseif ($row['exam_type'] == 'Assignment') {
-                    $assignment_marks[] = $row;
-                }
-            }
+                      WHERE m.student_id = ? AND m.exam_type = 'Final'
+                      ORDER BY sub.subject_name";
+        $final_stmt = sqlsrv_query($conn, $final_sql, array($student_id));
+        while($row = sqlsrv_fetch_array($final_stmt, SQLSRV_FETCH_ASSOC)) {
+            $final_marks[] = $row;
         }
         
         // Fetch Attendance
@@ -101,7 +118,7 @@ if (isset($_POST['search_student'])) {
         // Fetch Notifications (Teacher Feedback)
         $notif_sql = "SELECT message, created_at, is_read 
                       FROM Notifications 
-                      WHERE student_id = ?
+                      WHERE student_id = ? AND (parent_id IS NULL OR parent_id = 0)
                       ORDER BY created_at DESC";
         $notif_stmt = sqlsrv_query($conn, $notif_sql, array($student_id));
         if ($notif_stmt) {
@@ -110,7 +127,7 @@ if (isset($_POST['search_student'])) {
             }
         }
         
-        // Fetch Parent Feedback sent to teachers (from Messages table - we'll use Notifications with parent_id)
+        // Fetch Parent Feedback sent to teachers
         $feedback_sql = "SELECT message, created_at 
                          FROM Notifications 
                          WHERE student_id = ? AND parent_id = ?
@@ -119,6 +136,18 @@ if (isset($_POST['search_student'])) {
         if ($feedback_stmt) {
             while($row = sqlsrv_fetch_array($feedback_stmt, SQLSRV_FETCH_ASSOC)) {
                 $parent_feedback[] = $row;
+            }
+        }
+        
+        // Fetch Teacher Replies
+        $replies_sql = "SELECT message, created_at 
+                        FROM Notifications 
+                        WHERE parent_id = ? AND message LIKE '[TEACHER REPLY%'
+                        ORDER BY created_at DESC";
+        $replies_stmt = sqlsrv_query($conn, $replies_sql, array($_SESSION['user_id']));
+        if ($replies_stmt) {
+            while($reply = sqlsrv_fetch_array($replies_stmt, SQLSRV_FETCH_ASSOC)) {
+                $teacher_replies[] = $reply;
             }
         }
     }
@@ -133,7 +162,6 @@ if (isset($_POST['send_feedback'])) {
     
     $full_message = "[PARENT FEEDBACK - $subject] " . $message;
     
-    // Store in Notifications table with parent_id to identify parent feedback
     $sql = "INSERT INTO Notifications (student_id, message, is_read, parent_id, created_at) VALUES (?, ?, 0, ?, GETDATE())";
     $stmt = sqlsrv_query($conn, $sql, array($student_id, $full_message, $parent_id));
     
@@ -153,22 +181,6 @@ if (isset($_POST['send_feedback'])) {
         $feedback_msg = "<p style='color:red;'>✗ Error sending feedback. Please try again.</p>";
     }
 }
-
-// Calculate percentages
-function getExamTotal($marks_array) {
-    $total = 0;
-    foreach($marks_array as $mark) {
-        $total += $mark['marks_obtained'];
-    }
-    return $total;
-}
-
-$exam_limits = [
-    'Quiz' => 10,
-    'Assignment' => 10,
-    'Midterm' => 20,
-    'Final' => 70
-];
 ?>
 
 <!DOCTYPE html>
@@ -220,8 +232,8 @@ $exam_limits = [
         .percentage-fill { background: #4caf50; height: 100%; border-radius: 10px; }
         .note { background: #3d0023; padding: 10px; border-radius: 6px; margin-top: 15px; font-size: 12px; color: #888; }
         .feedback-form { background: #3d0023; padding: 20px; border-radius: 8px; margin-top: 20px; }
-        .parent-feedback { margin-top: 20px; }
         .feedback-item-parent { border-left-color: #4caf50; }
+        .reply-item { border-left-color: #2196f3; }
     </style>
     <script>
         function showGroupOption() {
@@ -254,7 +266,10 @@ $exam_limits = [
                         <label>Select Class:</label>
                         <select name="class_id" id="class_id" required onchange="showGroupOption()">
                             <option value="">-- Select Class --</option>
-                            <?php while($c = sqlsrv_fetch_array($classes, SQLSRV_FETCH_ASSOC)): ?>
+                            <?php 
+                            $c_reset = sqlsrv_query($conn, "SELECT * FROM Class ORDER BY class_id");
+                            while($c = sqlsrv_fetch_array($c_reset, SQLSRV_FETCH_ASSOC)): 
+                            ?>
                                 <option value="<?= $c['class_id'] ?>" <?= (isset($_POST['class_id']) && $_POST['class_id'] == $c['class_id']) ? 'selected' : '' ?>>
                                     <?= $c['class_name'] ?>
                                 </option>
@@ -285,9 +300,7 @@ $exam_limits = [
         </div>
         
         <?php if($error_msg): ?>
-            <div class="error-box">
-                ❌ <?= $error_msg ?>
-            </div>
+            <div class="error-box">❌ <?= $error_msg ?></div>
         <?php endif; ?>
         
         <?php if($student_info): ?>
@@ -307,61 +320,27 @@ $exam_limits = [
             <div class="two-columns">
                 <!-- Left Column: Academic Results -->
                 <div class="column">
-                    <!-- Performance Summary Stats -->
-                    <div class="card">
-                        <h2>📊 Performance Summary</h2>
-                        <?php
-                        $quiz_total = getExamTotal($quiz_marks);
-                        $quiz_count = count($quiz_marks);
-                        $quiz_possible = $quiz_count * 10;
-                        $assignment_total = getExamTotal($assignment_marks);
-                        $assignment_count = count($assignment_marks);
-                        $assignment_possible = $assignment_count * 10;
-                        $mid_total = getExamTotal($midterm_marks);
-                        $mid_count = count($midterm_marks);
-                        $mid_possible = $mid_count * 20;
-                        $final_total = getExamTotal($final_marks);
-                        $final_count = count($final_marks);
-                        $final_possible = $final_count * 70;
-                        ?>
-                        <div class="stats-grid">
-                            <div class="stat-box">
-                                <div class="stat-number"><?= $quiz_total ?> / <?= $quiz_possible ?></div>
-                                <div class="stat-label">Quiz (10 marks each)</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number"><?= $assignment_total ?> / <?= $assignment_possible ?></div>
-                                <div class="stat-label">Assignment (10 marks each)</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number"><?= $mid_total ?> / <?= $mid_possible ?></div>
-                                <div class="stat-label">Midterm (20 marks each)</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number"><?= $final_total ?> / <?= $final_possible ?></div>
-                                <div class="stat-label">Final (70 marks each)</div>
-                            </div>
-                        </div>
-                    </div>
-                    
                     <!-- Quiz Results -->
                     <?php if(count($quiz_marks) > 0): ?>
                     <div class="card">
                         <h2>📝 Quiz Results (10 marks each)</h2>
                         <table>
-                            <thead><tr><th>Subject</th><th>Marks</th><th>%</th> </thead>
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Marks</th>
+                                    <th>%</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 <?php foreach($quiz_marks as $q): 
                                     $percent = round(($q['marks_obtained'] / 10) * 100, 2);
+                                    $grade_class = ($percent >= 60) ? 'score-high' : (($percent >= 40) ? 'score-medium' : 'score-low');
                                 ?>
                                 <tr>
-                                    <td><?= $q['subject_name'] ?> </td
-                                    <td><?= $q['marks_obtained'] ?> / 10</td
-                                    <td class="<?= $percent >= 60 ? 'score-high' : ($percent >= 40 ? 'score-medium' : 'score-low') ?>">
-                                        <?= $percent ?>%
-                                        <div class="percentage-bar"><div class="percentage-fill" style="width: <?= $percent ?>%"></div></div>
-                                    </td
+                                    <td><?= htmlspecialchars($q['subject_name']) ?></td>
+                                    <td><?= $q['marks_obtained'] ?> / 10</td>
+                                    <td class="<?= $grade_class ?>"><?= $percent ?>%</td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -374,19 +353,22 @@ $exam_limits = [
                     <div class="card">
                         <h2>📋 Assignment Results (10 marks each)</h2>
                         <table>
-                            <thead><tr><th>Subject</th><th>Marks</th><th>%</th> </thead>
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Marks</th>
+                                    <th>%</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 <?php foreach($assignment_marks as $a): 
                                     $percent = round(($a['marks_obtained'] / 10) * 100, 2);
+                                    $grade_class = ($percent >= 60) ? 'score-high' : (($percent >= 40) ? 'score-medium' : 'score-low');
                                 ?>
                                 <tr>
-                                    <td><?= $a['subject_name'] ?> </td
-                                    <td><?= $a['marks_obtained'] ?> / 10</td
-                                    <td class="<?= $percent >= 60 ? 'score-high' : ($percent >= 40 ? 'score-medium' : 'score-low') ?>">
-                                        <?= $percent ?>%
-                                        <div class="percentage-bar"><div class="percentage-fill" style="width: <?= $percent ?>%"></div></div>
-                                    </td
+                                    <td><?= htmlspecialchars($a['subject_name']) ?></td>
+                                    <td><?= $a['marks_obtained'] ?> / 10</td>
+                                    <td class="<?= $grade_class ?>"><?= $percent ?>%</td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -399,19 +381,22 @@ $exam_limits = [
                     <div class="card">
                         <h2>📖 Midterm Results (20 marks each)</h2>
                         <table>
-                            <thead><tr><th>Subject</th><th>Marks</th><th>%</th> </thead>
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Marks</th>
+                                    <th>%</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 <?php foreach($midterm_marks as $m): 
                                     $percent = round(($m['marks_obtained'] / 20) * 100, 2);
+                                    $grade_class = ($percent >= 60) ? 'score-high' : (($percent >= 40) ? 'score-medium' : 'score-low');
                                 ?>
                                 <tr>
-                                    <td><?= $m['subject_name'] ?> </td
-                                    <td><?= $m['marks_obtained'] ?> / 20</td
-                                    <td class="<?= $percent >= 60 ? 'score-high' : ($percent >= 40 ? 'score-medium' : 'score-low') ?>">
-                                        <?= $percent ?>%
-                                        <div class="percentage-bar"><div class="percentage-fill" style="width: <?= $percent ?>%"></div></div>
-                                    </td
+                                    <td><?= htmlspecialchars($m['subject_name']) ?></td>
+                                    <td><?= $m['marks_obtained'] ?> / 20</td>
+                                    <td class="<?= $grade_class ?>"><?= $percent ?>%</td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -424,19 +409,22 @@ $exam_limits = [
                     <div class="card">
                         <h2>🎓 Final Results (70 marks each)</h2>
                         <table>
-                            <thead><tr><th>Subject</th><th>Marks</th><th>%</th> </thead>
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Marks</th>
+                                    <th>%</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 <?php foreach($final_marks as $f): 
                                     $percent = round(($f['marks_obtained'] / 70) * 100, 2);
+                                    $grade_class = ($percent >= 60) ? 'score-high' : (($percent >= 40) ? 'score-medium' : 'score-low');
                                 ?>
                                 <tr>
-                                    <td><?= $f['subject_name'] ?> </td
-                                    <td><?= $f['marks_obtained'] ?> / 70</td
-                                    <td class="<?= $percent >= 60 ? 'score-high' : ($percent >= 40 ? 'score-medium' : 'score-low') ?>">
-                                        <?= $percent ?>%
-                                        <div class="percentage-bar"><div class="percentage-fill" style="width: <?= $percent ?>%"></div></div>
-                                    </td
+                                    <td><?= htmlspecialchars($f['subject_name']) ?></td>
+                                    <td><?= $f['marks_obtained'] ?> / 70</td>
+                                    <td class="<?= $grade_class ?>"><?= $percent ?>%</td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -467,13 +455,17 @@ $exam_limits = [
                         </div>
                         <?php if(count($attendance_records) > 0): ?>
                         <table>
-                            <thead><tr><th>Date</th><th>Status</th> </thead>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 <?php foreach($attendance_records as $att): ?>
                                 <tr>
-                                    <td><?= $att['attendance_date']->format('Y-m-d') ?> </td
-                                    <td class="<?= strtolower($att['status']) ?>"><?= $att['status'] ?> </td
+                                    <td><?= $att['attendance_date']->format('Y-m-d') ?></td>
+                                    <td class="<?= strtolower($att['status']) ?>"><?= $att['status'] ?></td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -488,14 +480,19 @@ $exam_limits = [
                         <h2>⭐ Behaviour Records</h2>
                         <?php if(count($behaviour_records) > 0): ?>
                         <table>
-                            <thead><tr><th>Date</th><th>Description</th><th>Score</th> </thead>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Score</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 <?php foreach($behaviour_records as $b): ?>
                                 <tr>
-                                    <td><?= $b['behaviour_date']->format('Y-m-d') ?> </td
-                                    <td><?= htmlspecialchars($b['description']) ?> </td
-                                    <td><?= $b['score'] ?>/5</td
+                                    <td><?= $b['behaviour_date']->format('Y-m-d') ?></td>
+                                    <td><?= htmlspecialchars($b['description']) ?></td>
+                                    <td><?= $b['score'] ?>/5</td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -520,6 +517,21 @@ $exam_limits = [
                             <?php endforeach; ?>
                         <?php else: ?>
                             <p style="color:#888;">No messages from teachers yet.</p>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <!-- Teacher Replies -->
+                    <div class="card">
+                        <h2>📨 Replies from Teachers</h2>
+                        <?php if(count($teacher_replies) > 0): ?>
+                            <?php foreach($teacher_replies as $reply): ?>
+                                <div class="notification-item reply-item">
+                                    <?= htmlspecialchars($reply['message']) ?>
+                                    <div class="notification-date"><?= $reply['created_at']->format('Y-m-d H:i') ?></div>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <p style="color:#888;">No replies from teachers yet.</p>
                         <?php endif; ?>
                     </div>
                     
@@ -562,9 +574,7 @@ $exam_limits = [
             </div>
             
         <?php elseif($search_performed && !$student_info): ?>
-            <div class="error-box">
-                ❌ No student found. Please check the Class and Student ID and try again.
-            </div>
+            <div class="error-box">❌ No student found. Please check the Class and Student ID and try again.</div>
         <?php endif; ?>
         
         <div style="text-align: center;">
